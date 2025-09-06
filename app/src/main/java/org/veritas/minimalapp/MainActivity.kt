@@ -1,23 +1,53 @@
 package org.veritas.minimalapp // Перевірте, чи ім'я пакета ваше
 
-import android.app.Activity // 1. Імпортуємо базовий клас Activity
+import android.app.Activity
+import android.app.DatePickerDialog
 import android.os.Bundle
-import android.widget.TextView
+import java.time.LocalDate
+import java.util.Calendar
 
-// 2. Наслідуємо наш клас від Activity
 class MainActivity : Activity() {
 
-    // 3. Це головний метод, який викликається при створенні екрана
+    private lateinit var tableView: TableView
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 4. Важливо викликати метод батьківського класу
         super.onCreate(savedInstanceState)
 
-        // 5. Створюємо елемент інтерфейсу (текстове поле) прямо в коді
-        val textView = TextView(this)
-        textView.text = "Hello, Minimal World!"
-        textView.textSize = 24f // Зробимо текст трохи більшим
+        // --- Налаштування таблиці ---
+        val rows = 20 // Задайте бажану кількість рядків
+        val cols = 10 // Задайте бажану кількість стовпців
 
-        // 6. Встановлюємо цей елемент як вміст нашого екрана
-        setContentView(textView)
+        // 1. Створюємо екземпляр нашої кастомної TableView
+        tableView = TableView(this, rows, cols)
+
+        // 2. Встановлюємо її як головний вміст екрана
+        setContentView(tableView)
+
+        // 3. Встановлюємо слухач натискань на комірки
+        tableView.onCellClickListener = { row, col ->
+            showCalendarForCell(row, col)
+        }
+    }
+
+    private fun showCalendarForCell(row: Int, col: Int) {
+        val calendar = Calendar.getInstance()
+        val year = calendar.get(Calendar.YEAR)
+        val month = calendar.get(Calendar.MONTH)
+        val day = calendar.get(Calendar.DAY_OF_MONTH)
+
+        // Створюємо і показуємо стандартний DatePickerDialog
+        val datePickerDialog = DatePickerDialog(
+            this,
+            { _, selectedYear, selectedMonth, selectedDay ->
+                // Цей код виконається, коли користувач вибере дату
+                val selectedDate = LocalDate.of(selectedYear, selectedMonth + 1, selectedDay)
+                // Оновлюємо дані в нашій TableView
+                tableView.updateCell(row, col, selectedDate)
+            },
+            year,
+            month,
+            day
+        )
+        datePickerDialog.show()
     }
 }
