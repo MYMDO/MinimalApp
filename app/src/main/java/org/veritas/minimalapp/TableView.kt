@@ -15,6 +15,7 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 @SuppressLint("ViewConstructor")
 class TableView(
@@ -35,7 +36,7 @@ class TableView(
     }
     private val textPaint = Paint().apply {
         color = Color.BLACK
-        textSize = 96f // Ваша зміна збережена
+        textSize = 42f // Ваша зміна збережена
         textAlign = Paint.Align.CENTER
     }
     private val cellBackgroundPaint = Paint().apply {
@@ -44,20 +45,15 @@ class TableView(
     }
 
     private var backgroundDrawable: Drawable? = null
-
     private var scaleFactor = 1.0f
     private var offsetX = 0f
     private var offsetY = 0f
     private val scaleGestureDetector = ScaleGestureDetector(context, ScaleListener())
     private val gestureDetector = GestureDetector(context, GestureListener())
-
     private var cellWidth = 250f
     private var cellHeight = 150f
     private val cellData = mutableMapOf<Pair<Int, Int>, CellData>()
-
     var onCellClickListener: ((row: Int, col: Int) -> Unit)? = null
-
-    // НОВЕ: Прапорець, щоб логіка початкового центрування виконувалась лише раз
     private var isInitialFitDone = false
 
     init {
@@ -65,51 +61,34 @@ class TableView(
         loadData()
     }
 
-    // НОВЕ: Метод, який викликається, коли розмір View стає відомим.
-    // Ідеальне місце для початкового налаштування.
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        // Виконуємо лише один раз, коли View вперше з'являється на екрані
         if (!isInitialFitDone && w > 0 && h > 0) {
             fitToScreen()
             isInitialFitDone = true
         }
     }
 
-    // НОВЕ: Логіка для початкового масштабування та центрування
     private fun fitToScreen() {
         val drawable = backgroundDrawable ?: return
         val viewWidth = width.toFloat()
         val viewHeight = height.toFloat()
-
-        // Отримуємо "природні" розміри векторного зображення
         val imageWidth = drawable.intrinsicWidth.toFloat()
         val imageHeight = drawable.intrinsicHeight.toFloat()
         if (imageWidth <= 0 || imageHeight <= 0) return
-
-        // 1. КОМПЕНСАЦІЯ ПРОПОРЦІЙ:
-        // Перераховуємо розміри комірок, щоб сітка точно відповідала пропорціям зображення
         cellWidth = imageWidth / cols
         cellHeight = imageHeight / rows
-
-        // 2. МАСШТАБУВАННЯ:
-        // Розраховуємо коефіцієнт масштабування, щоб вписати зображення в екран
         val scaleX = viewWidth / imageWidth
         val scaleY = viewHeight / imageHeight
-        scaleFactor = min(scaleX, scaleY) // min() гарантує, що зображення влізе повністю
-
-        // 3. ЦЕНТРУВАННЯ:
-        // Розраховуємо зсув, щоб відцентрувати зображення на екрані
+        scaleFactor = min(scaleX, scaleY)
         val scaledWidth = imageWidth * scaleFactor
         val scaledHeight = imageHeight * scaleFactor
         offsetX = (viewWidth - scaledWidth) / 2f
         offsetY = (viewHeight - scaledHeight) / 2f
-
-        // Перемальовуємо View з новими, розрахованими параметрами
         invalidate()
     }
 
-
+    // --- ОНОВЛЕНО: Метод малювання тепер використовує динамічний колір ---
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.save()
@@ -128,21 +107,82 @@ class TableView(
                 val right = left + cellWidth
                 val bottom = top + cellHeight
 
+                // Логіка малювання фону та тексту
                 if (cellData.containsKey(row to col)) {
-                    canvas.drawRect(left, top, right, bottom, cellBackgroundPaint)
-                }
-                canvas.drawRect(left, top, right, bottom, gridPaint)
-
-                cellData[row to col]?.let { data ->
+                    val data = cellData[row to col]!!
                     val daysPassed = ChronoUnit.DAYS.between(data.selectedDate, LocalDate.now())
-                    val text = "$daysPassed" // Ваша зміна збережена
+
+                    // 1. Отримуємо динамічний колір
+                    val cellColor = getColorForDays(daysPassed)
+                    // 2. Встановлюємо його для "пензля"
+                    cellBackgroundPaint.color = cellColor
+                    // 3. Малюємо фон
+                    canvas.drawRect(left, top, right, bottom, cellBackgroundPaint)
+
+                    // Малюємо текст поверх фону
+                    val text = "$daysPassed"
                     val textX = left + cellWidth / 2
                     val textY = top + cellHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2
                     canvas.drawText(text, textX, textY, textPaint)
                 }
+
+                // Малюємо рамку комірки поверх усього
+                canvas.drawRect(left, top, right, bottom, gridPaint)
             }
         }
         canvas.restore()
+    }
+
+    // --- НОВЕ: Функція для розрахунку динамічного кольору ---
+    private fun getColorForDays(days: Long): Int {
+        // Визначаємо ключові кольори (ARGB - Alpha, Red, Green, Blue)
+        val red = Color.RED
+        val yellow = Color.YELLOW
+        val green = Color.GREEN
+        // Зелений з 75% прозорістю (25% непрозорості, 0.25 * 255 = 64)
+        val transparentGreen = Color.argb(64, Color.red(green), Color.green(green), Color.blue(green))
+
+        return when {
+            // Діапазон 1: Від 0 до 9 днів (Червоний -> Жовтий)
+            days in 0..8 -> {
+                // fraction - наскільки ми просунулись в діапазоні (від 0.0 до 1.0)
+                val fraction = days.toFloat() / 9f
+                // easedFraction - "логарифмічний" ефект
+                val easedFraction = sqrt(fraction)
+                // Інтерполяція кольору
+                interpolateColor(red, yellow, easedFraction)
+            }
+            // Діапазон 2: Від 9 до 25 днів (Жовтий -> Прозорий Зелений)
+            days in 9..25 -> {
+                val fraction = (days - 9).toFloat() / (25f - 9f)
+                val easedFraction = sqrt(fraction)
+                interpolateColor(yellow, transparentGreen, easedFraction)
+            }
+            // Більше 25 днів
+            days > 25 -> transparentGreen
+            // Менше 0 (майбутні дати) або інші випадки
+            else -> Color.TRANSPARENT // Не малюємо фон для майбутніх дат
+        }
+    }
+
+    // --- НОВЕ: Допоміжна функція для плавної зміни кольору (інтерполяція) ---
+    private fun interpolateColor(startColor: Int, endColor: Int, fraction: Float): Int {
+        val startA = Color.alpha(startColor)
+        val startR = Color.red(startColor)
+        val startG = Color.green(startColor)
+        val startB = Color.blue(startColor)
+
+        val endA = Color.alpha(endColor)
+        val endR = Color.red(endColor)
+        val endG = Color.green(endColor)
+        val endB = Color.blue(endColor)
+
+        val a = (startA + fraction * (endA - startA)).toInt()
+        val r = (startR + fraction * (endR - startR)).toInt()
+        val g = (startG + fraction * (endG - startG)).toInt()
+        val b = (startB + fraction * (endB - startB)).toInt()
+
+        return Color.argb(a, r, g, b)
     }
 
     @SuppressLint("ClickableViewAccessibility")
