@@ -14,8 +14,8 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         // --- Налаштування таблиці ---
-        val rows = 20 // Задайте бажану кількість рядків
-        val cols = 10 // Задайте бажану кількість стовпців
+        val rows = 64 // Задайте бажану кількість рядків
+        val cols = 32 // Задайте бажану кількість стовпців
 
         // 1. Створюємо екземпляр нашої кастомної TableView
         tableView = TableView(this, rows, cols)
