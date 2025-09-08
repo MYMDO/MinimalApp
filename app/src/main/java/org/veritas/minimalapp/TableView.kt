@@ -11,7 +11,6 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import java.time.LocalDate
-//import java.time.format.DateTimeParseException
 import java.time.temporal.ChronoUnit
 import kotlin.math.max
 import kotlin.math.min
@@ -61,6 +60,14 @@ class TableView(
         loadData()
     }
 
+    // --- НОВЕ: Метод життєвого циклу для перевірки даних при появі View ---
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // Перевіряємо та очищаємо застарілі комірки кожного разу,
+        // коли користувач відкриває або повертається до додатка.
+        clearExpiredCells()
+    }
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (!isInitialFitDone && w > 0 && h > 0) {
@@ -88,7 +95,6 @@ class TableView(
         invalidate()
     }
 
-    // --- ОНОВЛЕНО: Метод малювання тепер використовує динамічний колір ---
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.save()
@@ -107,81 +113,87 @@ class TableView(
                 val right = left + cellWidth
                 val bottom = top + cellHeight
 
-                // Логіка малювання фону та тексту
                 if (cellData.containsKey(row to col)) {
                     val data = cellData[row to col]!!
                     val daysPassed = ChronoUnit.DAYS.between(data.selectedDate, LocalDate.now())
 
-                    // 1. Отримуємо динамічний колір
-                    val cellColor = getColorForDays(daysPassed)
-                    // 2. Встановлюємо його для "пензля"
-                    cellBackgroundPaint.color = cellColor
-                    // 3. Малюємо фон
-                    canvas.drawRect(left, top, right, bottom, cellBackgroundPaint)
+                    // ОНОВЛЕНА УМОВА: Малюємо фон, тільки якщо комірка не застаріла
+                    if (daysPassed <= 25) {
+                        val cellColor = getColorForDays(daysPassed)
+                        cellBackgroundPaint.color = cellColor
+                        canvas.drawRect(left, top, right, bottom, cellBackgroundPaint)
 
-                    // Малюємо текст поверх фону
-                    val text = "$daysPassed"
-                    val textX = left + cellWidth / 2
-                    val textY = top + cellHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2
-                    canvas.drawText(text, textX, textY, textPaint)
+                        val text = "$daysPassed"
+                        val textX = left + cellWidth / 2
+                        val textY = top + cellHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2
+                        canvas.drawText(text, textX, textY, textPaint)
+                    }
                 }
-
-                // Малюємо рамку комірки поверх усього
                 canvas.drawRect(left, top, right, bottom, gridPaint)
             }
         }
         canvas.restore()
     }
 
-    // --- НОВЕ: Функція для розрахунку динамічного кольору ---
+    // --- НОВЕ: Функція для очищення застарілих комірок ---
+    private fun clearExpiredCells() {
+        val today = LocalDate.now()
+        val expiredKeys = mutableListOf<Pair<Int, Int>>()
+
+        // 1. Знаходимо всі ключі комірок, які потрібно видалити
+        cellData.forEach { (key, data) ->
+            val daysPassed = ChronoUnit.DAYS.between(data.selectedDate, today)
+            if (daysPassed > 25) {
+                expiredKeys.add(key)
+            }
+        }
+
+        // 2. Якщо є що видаляти, робимо це
+        if (expiredKeys.isNotEmpty()) {
+            expiredKeys.forEach { key ->
+                cellData.remove(key)
+            }
+            saveData()     // 3. Зберігаємо зміни
+            invalidate()   // 4. Перемальовуємо екран
+        }
+    }
+
     private fun getColorForDays(days: Long): Int {
-        // Визначаємо ключові кольори (ARGB - Alpha, Red, Green, Blue)
         val red = Color.RED
         val yellow = Color.YELLOW
         val green = Color.GREEN
-        // Зелений з 75% прозорістю (25% непрозорості, 0.25 * 255 = 64)
         val transparentGreen = Color.argb(64, Color.red(green), Color.green(green), Color.blue(green))
 
         return when {
-            // Діапазон 1: Від 0 до 9 днів (Червоний -> Жовтий)
             days in 0..8 -> {
-                // fraction - наскільки ми просунулись в діапазоні (від 0.0 до 1.0)
                 val fraction = days.toFloat() / 9f
-                // easedFraction - "логарифмічний" ефект
                 val easedFraction = sqrt(fraction)
-                // Інтерполяція кольору
                 interpolateColor(red, yellow, easedFraction)
             }
-            // Діапазон 2: Від 9 до 25 днів (Жовтий -> Прозорий Зелений)
             days in 9..25 -> {
                 val fraction = (days - 9).toFloat() / (25f - 9f)
                 val easedFraction = sqrt(fraction)
                 interpolateColor(yellow, transparentGreen, easedFraction)
             }
-            // Більше 25 днів
-            days > 25 -> transparentGreen
-            // Менше 0 (майбутні дати) або інші випадки
-            else -> Color.TRANSPARENT // Не малюємо фон для майбутніх дат
+            // ОНОВЛЕНО: Цей випадок тепер обробляється логікою очищення,
+            // але залишаємо прозорий колір як запасний варіант.
+            else -> Color.TRANSPARENT
         }
     }
 
-    // --- НОВЕ: Допоміжна функція для плавної зміни кольору (інтерполяція) ---
     private fun interpolateColor(startColor: Int, endColor: Int, fraction: Float): Int {
         val startA = Color.alpha(startColor)
         val startR = Color.red(startColor)
         val startG = Color.green(startColor)
         val startB = Color.blue(startColor)
-
         val endA = Color.alpha(endColor)
         val endR = Color.red(endColor)
         val endG = Color.green(endColor)
         val endB = Color.blue(endColor)
-
         val a = (startA + fraction * (endA - startA)).toInt()
         val r = (startR + fraction * (endR - startR)).toInt()
         val g = (startG + fraction * (endG - startG)).toInt()
         val b = (startB + fraction * (endB - startB)).toInt()
-
         return Color.argb(a, r, g, b)
     }
 
@@ -228,22 +240,13 @@ class TableView(
     }
 
     private inner class GestureListener : GestureDetector.SimpleOnGestureListener() {
-        override fun onDown(e: MotionEvent): Boolean {
-            return true
-        }
-
-        override fun onScroll(
-            e1: MotionEvent?,
-            e2: MotionEvent,
-            distanceX: Float,
-            distanceY: Float
-        ): Boolean {
+        override fun onDown(e: MotionEvent): Boolean { return true }
+        override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
             offsetX -= distanceX
             offsetY -= distanceY
             invalidate()
             return true
         }
-
         override fun onLongPress(e: MotionEvent) {
             val col = ((e.x - offsetX) / scaleFactor / cellWidth).toInt()
             val row = ((e.y - offsetY) / scaleFactor / cellHeight).toInt()
@@ -258,12 +261,10 @@ class TableView(
             val oldScaleFactor = scaleFactor
             scaleFactor *= detector.scaleFactor
             scaleFactor = max(0.1f, min(scaleFactor, 5.0f))
-
             val focusX = detector.focusX
             val focusY = detector.focusY
             offsetX = focusX - (focusX - offsetX) * (scaleFactor / oldScaleFactor)
             offsetY = focusY - (focusY - offsetY) * (scaleFactor / oldScaleFactor)
-
             invalidate()
             return true
         }
