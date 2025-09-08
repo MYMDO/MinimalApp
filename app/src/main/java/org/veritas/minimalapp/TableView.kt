@@ -35,7 +35,7 @@ class TableView(
     }
     private val textPaint = Paint().apply {
         color = Color.BLACK
-        textSize = 42f // Ваша зміна збережена
+        textSize = 42f
         textAlign = Paint.Align.CENTER
     }
     private val cellBackgroundPaint = Paint().apply {
@@ -60,11 +60,8 @@ class TableView(
         loadData()
     }
 
-    // --- НОВЕ: Метод життєвого циклу для перевірки даних при появі View ---
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        // Перевіряємо та очищаємо застарілі комірки кожного разу,
-        // коли користувач відкриває або повертається до додатка.
         clearExpiredCells()
     }
 
@@ -117,7 +114,6 @@ class TableView(
                     val data = cellData[row to col]!!
                     val daysPassed = ChronoUnit.DAYS.between(data.selectedDate, LocalDate.now())
 
-                    // ОНОВЛЕНА УМОВА: Малюємо фон, тільки якщо комірка не застаріла
                     if (daysPassed <= 25) {
                         val cellColor = getColorForDays(daysPassed)
                         cellBackgroundPaint.color = cellColor
@@ -135,48 +131,42 @@ class TableView(
         canvas.restore()
     }
 
-    // --- НОВЕ: Функція для очищення застарілих комірок ---
     private fun clearExpiredCells() {
         val today = LocalDate.now()
         val expiredKeys = mutableListOf<Pair<Int, Int>>()
-
-        // 1. Знаходимо всі ключі комірок, які потрібно видалити
         cellData.forEach { (key, data) ->
             val daysPassed = ChronoUnit.DAYS.between(data.selectedDate, today)
             if (daysPassed > 25) {
                 expiredKeys.add(key)
             }
         }
-
-        // 2. Якщо є що видаляти, робимо це
         if (expiredKeys.isNotEmpty()) {
             expiredKeys.forEach { key ->
                 cellData.remove(key)
             }
-            saveData()     // 3. Зберігаємо зміни
-            invalidate()   // 4. Перемальовуємо екран
+            saveData()
+            invalidate()
         }
     }
 
+    // --- ОНОВЛЕНО: Конструкція 'when' тепер з об'єктом ---
     private fun getColorForDays(days: Long): Int {
         val red = Color.RED
         val yellow = Color.YELLOW
         val green = Color.GREEN
         val transparentGreen = Color.argb(64, Color.red(green), Color.green(green), Color.blue(green))
 
-        return when {
-            days in 0..8 -> {
+        return when (days) { // 'days' тепер є об'єктом
+            in 0..8 -> {
                 val fraction = days.toFloat() / 9f
                 val easedFraction = sqrt(fraction)
                 interpolateColor(red, yellow, easedFraction)
             }
-            days in 9..25 -> {
+            in 9..25 -> {
                 val fraction = (days - 9).toFloat() / (25f - 9f)
                 val easedFraction = sqrt(fraction)
                 interpolateColor(yellow, transparentGreen, easedFraction)
             }
-            // ОНОВЛЕНО: Цей випадок тепер обробляється логікою очищення,
-            // але залишаємо прозорий колір як запасний варіант.
             else -> Color.TRANSPARENT
         }
     }
